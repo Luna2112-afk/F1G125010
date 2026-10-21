@@ -1,0 +1,338 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Uji Model AI</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 35px 15px;
+            font-family: Arial, sans-serif;
+            background: #f1f5f9;
+            color: #0f172a;
+        }
+
+        .container {
+            max-width: 975px;
+            margin: auto;
+            padding: 45px 38px;
+            background: white;
+            border-radius: 22px;
+            box-shadow: 0 8px 25px #00000010;
+            text-align: center;
+        }
+
+        h1 {
+            color: #2563eb;
+            font-size: 40px;
+            margin: 15px 0 28px;
+        }
+
+        .description {
+            font-size: 23px;
+            line-height: 1.7;
+            margin-bottom: 35px;
+        }
+
+        button {
+            padding: 17px 25px;
+            margin: 8px;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        #startBtn {
+            background: #2563eb;
+            color: white;
+        }
+
+        #stopBtn {
+            background: #e2e8f0;
+            color: #64748b;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #camera {
+            margin: 35px auto 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        #camera canvas {
+            max-width: 100%;
+            height: auto;
+            border-radius: 12px;
+        }
+
+        #status {
+            margin: 25px 0;
+            color: #475569;
+            font-size: 18px;
+        }
+
+        h2 {
+            margin-top: 35px;
+        }
+
+        .result {
+            margin: 14px 0;
+            padding: 15px;
+            text-align: left;
+            background: #f8fafc;
+            border-radius: 10px;
+        }
+
+        .result-info {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+
+        .bar {
+            height: 12px;
+            background: #e2e8f0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .fill {
+            height: 100%;
+            background: #2563eb;
+            transition: width 0.2s;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 25px 18px;
+            }
+
+            h1 {
+                font-size: 30px;
+            }
+
+            .description {
+                font-size: 17px;
+            }
+
+            button {
+                font-size: 15px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1>Uji Model AI</h1>
+
+    <p class="description">
+        Gunakan kamera untuk menguji hasil training
+        model gambar dari Teachable Machine.
+    </p>
+
+    <button id="startBtn">Aktifkan Kamera</button>
+    <button id="stopBtn" disabled>Matikan Kamera</button>
+
+    <div id="camera">
+        <p>Kamera belum aktif.</p>
+    </div>
+
+    <p id="status">Memuat model AI...</p>
+
+    <h2>Hasil Prediksi</h2>
+
+    <div id="results">
+        Hasil prediksi akan muncul di sini.
+    </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+<script>
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const camera = document.getElementById("camera");
+    const statusText = document.getElementById("status");
+    const results = document.getElementById("results");
+
+    // Lokasi model di folder komputer
+    const MODEL_URL = "./code%20model%20ai%20angka%203%20%26%205/";;
+
+    let model = null;
+    let webcam = null;
+    let running = false;
+    let animationId = null;
+
+    // Memuat model dari folder lokal
+    async function loadModel() {
+        statusText.textContent = "Memuat model AI...";
+
+        try {
+            model = await tmImage.load(
+                MODEL_URL + "model.json",
+                MODEL_URL + "metadata.json"
+            );
+
+            statusText.textContent =
+                "Model berhasil dimuat. Klik Aktifkan Kamera.";
+
+        } catch (error) {
+            statusText.textContent =
+                "Model gagal dimuat. Periksa folder model/.";
+            console.error(error);
+        }
+    }
+
+    // Mengaktifkan kamera
+    async function startCamera() {
+        startBtn.disabled = true;
+
+        try {
+            if (!model) {
+                await loadModel();
+            }
+
+            if (!model) {
+                throw new Error(
+                    "Model belum berhasil dimuat. Periksa file model."
+                );
+            }
+
+            statusText.textContent = "Meminta izin kamera...";
+
+            webcam = new tmImage.Webcam(400, 400, true);
+
+            await webcam.setup();
+            await webcam.play();
+
+            camera.innerHTML = "";
+            camera.appendChild(webcam.canvas);
+
+            running = true;
+            stopBtn.disabled = false;
+
+            statusText.textContent =
+                "Kamera aktif. Arahkan ke objek yang ingin diuji.";
+
+            animationId = requestAnimationFrame(predict);
+
+        } catch (error) {
+            statusText.textContent =
+                "Gagal: " + error.message;
+
+            if (webcam) {
+                webcam.stop();
+                webcam = null;
+            }
+
+            camera.innerHTML = "<p>Kamera belum aktif.</p>";
+            startBtn.disabled = false;
+        }
+    }
+
+    // Melakukan prediksi secara langsung
+    async function predict() {
+        if (!running || !webcam || !model) return;
+
+        webcam.update();
+
+        try {
+            const predictions = await model.predict(webcam.canvas);
+
+            predictions.sort(
+                (a, b) => b.probability - a.probability
+            );
+
+            results.innerHTML = "";
+
+            predictions.forEach(item => {
+                const percent =
+                    (item.probability * 100).toFixed(2);
+
+                const result = document.createElement("div");
+                result.className = "result";
+
+                const info = document.createElement("div");
+                info.className = "result-info";
+
+                const name = document.createElement("strong");
+                name.textContent = item.className;
+
+                const value = document.createElement("span");
+                value.textContent = percent + "%";
+
+                info.append(name, value);
+
+                const bar = document.createElement("div");
+                bar.className = "bar";
+
+                const fill = document.createElement("div");
+                fill.className = "fill";
+                fill.style.width = percent + "%";
+
+                bar.appendChild(fill);
+                result.append(info, bar);
+                results.appendChild(result);
+            });
+
+        } catch (error) {
+            statusText.textContent = "Prediksi gagal.";
+            stopCamera();
+            return;
+        }
+
+        if (running) {
+            animationId = requestAnimationFrame(predict);
+        }
+    }
+
+    // Mematikan kamera
+    function stopCamera() {
+        running = false;
+
+        if (animationId) {
+            cancelAnimationFrame(animationId);
+        }
+
+        if (webcam) {
+            webcam.stop();
+            webcam = null;
+        }
+
+        camera.innerHTML = "<p>Kamera sudah dimatikan.</p>";
+        statusText.textContent = "Kamera telah dimatikan.";
+
+        results.innerHTML = "Prediksi dihentikan.";
+
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+    }
+
+    startBtn.addEventListener("click", startCamera);
+    stopBtn.addEventListener("click", stopCamera);
+
+    // Memuat model ketika halaman dibuka
+    loadModel();
+</script>
+
+</body>
+</html>
